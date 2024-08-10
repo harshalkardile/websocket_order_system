@@ -24,22 +24,31 @@ class OrderHandler {
   }
 
   // Determines the action to be taken based on the order's priceType and status.
-  determineAction(order) {
-    if (order.priceType === "MKT" && order.status === "complete") {
-      return "placeOrder";
-    } else if (order.priceType === "LMT" && order.status === "open") {
-      return "placeOrder";
-    } else if (
-      (order.priceType === "SL-LMT" || order.priceType === "SL-MKT") &&
-      order.status === "pending"
-    ) {
-      return "placeOrder";
-    } else if (
-      ["LMT", "SL-LMT", "SL-MKT"].includes(order.priceType) &&
-      order.status === "cancelled"
-    ) {
-      return "cancelOrder";
-    }
+    determineAction(order) {
+      
+        const existingOrder = this.orders[order.AppOrderID];
+        let action;
+        if (!existingOrder) {
+            if (order.priceType === "MKT" && order.status === "complete") {
+                return "placeOrder";
+            } else if (order.priceType === "LMT" && order.status === "open") {
+                return "placeOrder";
+            } else if (
+                (order.priceType === "SL-LMT" || order.priceType === "SL-MKT") &&
+                order.status === "pending"
+            ) {
+                return "placeOrder";
+            } else if (
+                ["LMT", "SL-LMT", "SL-MKT"].includes(order.priceType) &&
+                order.status === "cancelled"
+            ) {
+                return "cancelOrder";
+            }
+        } else {
+            if (["MKT", "LMT", "SL-LMT", "SL-MKT"].includes(order.priceType)) {
+              return "modifyOrder";
+            }
+        }
     return null; 
   }
 
@@ -47,12 +56,14 @@ class OrderHandler {
   handleOrder(order) {
     if (!this.isRedundant(order)) {
       this.filteredUpdates.push(order);
-      const action = this.determineAction(order); 
+      const action = this.determineAction(order);
       if (action) {
         this.actionsTaken.push(
           `For AppOrderID: ${order.AppOrderID} : ${action}`
         );
-        this.logEntry(order); 
+        this.logEntry(order);
+
+        this.orders[order.AppOrderID] = order;
       }
     }
   }
