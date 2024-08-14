@@ -3,59 +3,77 @@ const WebSocket = require("ws");
 class OrderHandler {
   constructor() {
     this.orders = {};
-    this.filteredUpdates = [];
+    this.filteredUpdates = new Map();
     this.actionsTaken = [];
     this.logEntries = [];
   }
 
   // Checks if an order is redundant based on previously filtered updates.
   isRedundant(order) {
-    return this.filteredUpdates.some(
-      (existingOrder) =>
-        existingOrder.AppOrderID === order.AppOrderID &&
-        existingOrder.price === order.price &&
-        existingOrder.triggerPrice === order.triggerPrice &&
-        existingOrder.priceType === order.priceType &&
-        existingOrder.productType === order.productType &&
-        existingOrder.status === order.status &&
-        existingOrder.exchange === order.exchange &&
-        existingOrder.symbol === order.symbol
-    );
+    const orderKey = `${order.AppOrderID}-${order.price}-${order.triggerPrice}-${order.priceType}-${order.productType}-${order.status}-${order.exchange}-${order.symbol}`;
+    return this.filteredUpdates.has(orderKey);
+  }
+
+  // Adds an order to filteredUpdates Map
+  addOrderToFilteredUpdates(order) {
+    const orderKey = `${order.AppOrderID}-${order.price}-${order.triggerPrice}-${order.priceType}-${order.productType}-${order.status}-${order.exchange}-${order.symbol}`;
+    this.filteredUpdates.set(orderKey, order);
   }
 
   // Determines the action to be taken based on the order's priceType and status.
-    determineAction(order) {
-      
-        const existingOrder = this.orders[order.AppOrderID];
-        let action;
-        if (!existingOrder) {
-            if (order.priceType === "MKT" && order.status === "complete") {
-                return "placeOrder";
-            } else if (order.priceType === "LMT" && order.status === "open") {
-                return "placeOrder";
-            } else if (
-                (order.priceType === "SL-LMT" || order.priceType === "SL-MKT") &&
-                order.status === "pending"
-            ) {
-                return "placeOrder";
-            } else if (
-                ["LMT", "SL-LMT", "SL-MKT"].includes(order.priceType) &&
-                order.status === "cancelled"
-            ) {
-                return "cancelOrder";
-            }
-        } else {
-            if (["MKT", "LMT", "SL-LMT", "SL-MKT"].includes(order.priceType)) {
-              return "modifyOrder";
-            }
-        }
-    return null; 
+  determineAction(order) {
+    const existingOrder = this.orders[order.AppOrderID];
+    let action;
+
+    // Determine actions based on the existence of the order
+    if (!existingOrder) {
+      switch (order.priceType) {
+        case "MKT":
+          action = order.status === "complete" ? "placeOrder" : null;
+          break;
+        case "LMT":
+          action = order.status === "open" ? "placeOrder" : null;
+          break;
+        case "SL-LMT":
+        case "SL-MKT":
+          action = order.status === "pending" ? "placeOrder" : null;
+          break;
+        default:
+          action = null; 
+      }
+    } else {
+      switch (order.priceType) {
+        case "MKT":
+          action = order.status === "complete" ? "modifyOrder" : null;
+          break;
+        case "LMT":
+          action = order.status === "open" ? "modifyOrder" : null;
+          break;
+        case "SL-LMT":
+        case "SL-MKT":
+          action = order.status === "pending" ? "modifyOrder" : null;
+          break;
+        default:
+          action = null; 
+      }
+    }
+
+    // Special case for cancelling orders regardless of existence
+    if (
+      ["LMT", "SL-LMT", "SL-MKT"].includes(order.priceType) &&
+      order.status === "cancelled"
+    ) {
+      action = "cancelOrder";
+    }
+
+    return action;
   }
 
   // Handles incoming orders: filters redundant ones, determines the action, and logs the necessary information.
   handleOrder(order) {
     if (!this.isRedundant(order)) {
-      this.filteredUpdates.push(order);
+      this.addOrderToFilteredUpdates(order); // Correctly add order to filteredUpdates Map
+
       const action = this.determineAction(order);
       if (action) {
         this.actionsTaken.push(
@@ -68,7 +86,6 @@ class OrderHandler {
     }
   }
 
-  // Logs an entry for each order with additional metadata like timestamp and clientID.
   logEntry(order) {
     const clientID = 95055780 + (order.AppOrderID % 2);
     let timestamp;
@@ -85,20 +102,25 @@ class OrderHandler {
     const logEntry = {
       timestamp,
       clientID: clientID.toString(),
-      ...order, 
+      ...order,
     };
-    this.logEntries.push(logEntry); 
+    this.logEntries.push(logEntry);
   }
 
   // Prints out the filtered updates, actions taken, and example log entries for the orders.
   printResults() {
     console.log(
-      `Filtered Updates: ${this.filteredUpdates.length} unique and non-redundant updates.`
+      `Filtered Updates: ${this.filteredUpdates.size} unique and non-redundant updates.`
     );
-    console.log(JSON.stringify(this.filteredUpdates, null, 2)); 
+
+    // Convert Map to an array of [key, value] pairs and then stringify
+    const filteredUpdatesArray = Array.from(this.filteredUpdates.entries()).map(
+      ([key, value]) => ({ key, value })
+    );
+    console.log(JSON.stringify(filteredUpdatesArray, null, 2));
 
     console.log("\nActions Taken:");
-    this.actionsTaken.forEach((action) => console.log(action)); 
+    this.actionsTaken.forEach((action) => console.log(action));
 
     console.log("\nExample Log Entries for Updater:");
     this.logEntries.forEach((entry) => {
